@@ -1,0 +1,440 @@
+using Discord;
+using Discord.WebSocket;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
+using Smguy;
+
+namespace Dboy
+{
+    public class DiscordHandler
+    {
+        private readonly DiscordSocketClient _discordClient;
+        private readonly string _token;
+        private readonly ulong _guildId;
+        private readonly ulong _channelId;
+        private readonly Dictionary<string, ulong> _phoneNumberToUserId;
+        private readonly SmsHandler _smsHandler;
+        private bool _connected = false;
+        private readonly Dictionary<string, List<string>> _allowedUsers;
+        private readonly Dictionary<ulong, SmsInteractionState> _interactionStates;
+
+        public DiscordHandler(string token, ulong guildId, ulong channelId,
+                      Dictionary<string, ulong> phoneNumberToUserId,
+                      SmsHandler smsHandler,
+                      Dictionary<string, List<string>> allowedUsers)
+        {
+            _token = token;
+            _guildId = guildId;
+            _channelId = channelId;
+            _phoneNumberToUserId = phoneNumberToUserId;
+            _smsHandler = smsHandler;
+
+            _discordClient = new DiscordSocketClient(new DiscordSocketConfig
+            {
+                GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMessages | GatewayIntents.DirectMessages
+            });
+
+            _discordClient.Log += LogAsync;
+            _discordClient.Ready += OnClientReady;
+            _discordClient.SlashCommandExecuted += OnSlashCommandExecutedAsync;
+            _allowedUsers = allowedUsers;
+            _interactionStates = new Dictionary<ulong, SmsInteractionState>();
+        }
+
+        private string FindPhoneNumberByUserId(ulong userId)
+        {
+            foreach (var pair in _phoneNumberToUserId)
+            {
+                if (pair.Value == userId)
+                {
+                    return pair.Key;
+                }
+            }
+            return null;
+        }
+
+        private Task LogAsync(LogMessage log)
+        {
+            Console.WriteLine(log.ToString());
+            return Task.CompletedTask;
+        }
+
+        public async Task InitializeAsync()
+        {
+            await _discordClient.LoginAsync(TokenType.Bot, _token);
+            await _discordClient.StartAsync();
+        }
+
+        private Task OnClientReady()
+        {
+            _connected = true;
+            RegisterSlashCommands();
+            return Task.CompletedTask;
+        }
+
+        private void RegisterSlashCommands()
+        {
+            var guild = _discordClient.GetGuild(_guildId);
+            if (guild != null)
+            {
+                guild.CreateApplicationCommandAsync(new SlashCommandBuilder()
+                    .WithName("help")
+                    .WithDescription("Shows help information.")
+                    .Build());
+
+                guild.CreateApplicationCommandAsync(new SlashCommandBuilder()
+                    .WithName("sms")
+                    .WithDescription("Sends an SMS message.")
+                    .AddOption("phonenumber", ApplicationCommandOptionType.String, "Phone number to send the SMS", isRequired: true)
+                    .AddOption("message", ApplicationCommandOptionType.String, "The message to send", isRequired: true)
+                    .Build());
+
+                guild.CreateApplicationCommandAsync(new SlashCommandBuilder()
+                    .WithName("sms-spam")
+                    .WithDescription("Sends multiple SMS messages.")
+                    .AddOption("phonenumber", ApplicationCommandOptionType.String, "Phone number to send the SMS", isRequired: true)
+                    .AddOption("message", ApplicationCommandOptionType.String, "The message to send", isRequired: true)
+                    .AddOption("count", ApplicationCommandOptionType.Integer, "Number of times to send the message", isRequired: true)
+                    .Build());
+                guild.CreateApplicationCommandAsync(new SlashCommandBuilder()
+                    .WithName("super-sms")
+                    .WithDescription("Sends multiple SMS messages.")
+                    .AddOption("fromnumber", ApplicationCommandOptionType.String, "Phone number to send the SMS from", isRequired: true)
+                    .AddOption("tonumber", ApplicationCommandOptionType.String, "Phone number to send the SMS to", isRequired: true)
+                    .AddOption("message", ApplicationCommandOptionType.String, "The message to send", isRequired: true)
+                    .AddOption("count", ApplicationCommandOptionType.Integer, "Number of times to send the message", isRequired: true)
+                    .Build());
+            }
+        }
+
+        private async Task OnSlashCommandExecutedAsync(SocketSlashCommand command)
+        {
+            switch (command.Data.Name)
+            {
+                case "help":
+                    await ProcessHelpCommandAsync(command);
+                    break;
+                case "sms":
+                    var phoneNumber = command.Data.Options.First(o => o.Name == "phonenumber").Value.ToString();
+                    var message = command.Data.Options.First(o => o.Name == "message").Value.ToString();
+                    await ProcessSmsCommandAsync(command, phoneNumber, message);
+                    break;
+                case "sms-spam":
+                    var phoneNumberSpam = command.Data.Options.First(o => o.Name == "phonenumber").Value.ToString();
+                    var messageSpam = command.Data.Options.First(o => o.Name == "message").Value.ToString();
+                    var countSpam = Convert.ToInt32(command.Data.Options.First(o => o.Name == "count").Value);
+                    await ProcessSmsSpamCommandAsync(command, phoneNumberSpam, messageSpam, countSpam);
+                    break;
+                case "super-sms":
+                    var fromphoneNumber = command.Data.Options.First(o => o.Name == "from").Value.ToString();
+                    var tophoneNumber = command.Data.Options.First(o => o.Name == "phonenumber").Value.ToString();
+                    var smessage = command.Data.Options.First(o => o.Name == "message").Value.ToString();
+                    var scount = Convert.ToInt32(command.Data.Options.First(o => o.Name == "count").Value);
+                    await ProcessSuperSmsCommandAsync(command); //(command, fromphoneNumber, tophoneNumber, smessage, scount);
+                    break;
+            }
+        }
+
+        private async Task ProcessHelpCommandAsync(SocketSlashCommand command)
+        {
+            var embed = new EmbedBuilder()
+                .WithTitle("Help Information")
+                .WithDescription("Here are the available commands:\n" +
+                                 "- `/help`: Shows help information.\n" +
+                                 "- `/sms <phonenumber> <message>`: Send an SMS to the specified phone number. Format the phone number as 1NXXNXXXXXX.\n" +
+                                 "- `/sms-spam <phonenumber> <message> <count>`: Send multiple SMS messages.\n +" +
+                                 "-  `/sms-spam <From number> <phonenumber> <message> <count>`: Send multiple SMS messages from a number Havok owns.\n" +
+                                 "- `/sms-spam <phonenumber> <message> <count>`: Send multiple SMS messages.")
+
+                .WithColor(Color.Red)
+                .WithCurrentTimestamp()
+                .Build();
+
+            await command.RespondAsync(embed: embed);
+        }
+
+        private async Task ProcessSmsCommandAsync(SocketSlashCommand command, string phoneNumber, string message)
+        {
+            try
+            {
+                await command.DeferAsync(); // Acknowledge the command immediately
+
+                if (!phoneNumber.StartsWith("1"))
+                {
+                    phoneNumber = "1" + phoneNumber;
+                }
+
+                string senderPhoneNumber = FindPhoneNumberByUserId(command.User.Id);
+                if (string.IsNullOrEmpty(senderPhoneNumber))
+                {
+                    await command.FollowupAsync("Your Discord account is not linked with a phone number.");
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(message))
+                {
+                    await command.FollowupAsync("Cannot send an empty message.");
+                    return;
+                }
+
+                var response = await _smsHandler.SendSMSMMSAsync(senderPhoneNumber, phoneNumber, message);
+                if (response != null)
+                {
+                    var embed = new EmbedBuilder()
+                        .WithTitle("SMS Sent Successfully")
+                        .WithDescription($"SMS sent to {phoneNumber}: {message}")
+                        .WithColor(Color.Green)
+                        .WithCurrentTimestamp()
+                        .Build();
+
+                    await command.FollowupAsync(embed: embed);
+                }
+                else
+                {
+                    await command.FollowupAsync("Failed to send SMS. Please check the phone numbers and try again.");
+                }
+            }
+            catch (Exception ex)
+            {
+                await command.FollowupAsync($"Failed to send SMS: {ex.Message}");
+            }
+        }
+
+        private async Task ProcessSmsSpamCommandAsync(SocketSlashCommand command, string phoneNumber, string message, int count)
+        {
+            try
+            {
+                await command.DeferAsync(); // Acknowledge the command immediately
+
+                if (!phoneNumber.StartsWith("1"))
+                {
+                    phoneNumber = "1" + phoneNumber;
+                }
+
+                string senderPhoneNumber = FindPhoneNumberByUserId(command.User.Id);
+                if (string.IsNullOrEmpty(senderPhoneNumber))
+                {
+                    await command.FollowupAsync("Your Discord account is not linked with a phone number.");
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(message))
+                {
+                    await command.FollowupAsync("Cannot send an empty message.");
+                    return;
+                }
+
+                for (int i = 0; i < count; i++)
+                {
+                    // Send SMS and respect the updated API limitation of 5 messages per 2 seconds
+                    if (i > 0 && i % 2 == 0)
+                    {
+                        await Task.Delay(2000); // Wait for 2 seconds after every 5 messages
+                    }
+
+                    var response = await _smsHandler.SendSMSMMSAsync(senderPhoneNumber, phoneNumber, message);
+                    if (response == null)
+                    {
+                        await command.FollowupAsync($"Failed to send SMS after {i + 1} attempts. Please check the phone numbers and try again.");
+                        return;
+                    }
+                }
+
+                var embed = new EmbedBuilder()
+                    .WithTitle("SMS Spam Sent Successfully")
+                    .WithDescription($"To: {phoneNumber}\nMessage: {message}\nCount: {count}")
+                    .WithColor(Color.Green)
+                    .WithCurrentTimestamp()
+                    .Build();
+
+                await command.FollowupAsync(embed: embed);
+            }
+            catch (Exception ex)
+            {
+                await command.FollowupAsync($"Failed to send SMS spam: {ex.Message}");
+            }
+        }
+
+        private async Task ProcessSuperSmsCommandAsync(SocketSlashCommand command) //(SocketSlashCommand command, string fromPhoneNumber, string toPhoneNumber, string message, int count)
+        {
+            ulong userId = command.User.Id;
+
+            if (!_allowedUsers.TryGetValue(userId.ToString(), out var userNumbers) || !userNumbers.Any())
+            {
+                await command.RespondAsync("You do not have any phone numbers to send SMS from.", ephemeral: true);
+                return;
+            }
+
+            var embedBuilder = new EmbedBuilder()
+                .WithTitle("Available Numbers")
+                .WithDescription("Select a number to send SMS from by typing its corresponding number in the chat:");
+
+            for (int i = 0; i < userNumbers.Count; i++)
+            {
+                embedBuilder.AddField($"{i + 1}.", userNumbers[i], inline: true);
+            }
+
+            await command.RespondAsync(embed: embedBuilder.Build(), ephemeral: true);
+
+            if (!_interactionStates.ContainsKey(userId))
+            {
+                _interactionStates[userId] = new SmsInteractionState();
+            }
+            _interactionStates[userId].UserNumbers = userNumbers;
+            _interactionStates[userId].AwaitingNumberChoice = true;
+        }
+
+        private async Task OnMessageReceived(SocketMessage message)
+        {
+            if (message.Author.IsBot || !(message is SocketUserMessage userMessage))
+                return;
+
+            var userId = userMessage.Author.Id;
+
+            // Check if the user has an interaction state
+            if (_interactionStates.TryGetValue(userId, out var state))
+            {
+                if (state.AwaitingNumberChoice)
+                {
+                    if (int.TryParse(message.Content, out int choice) && choice >= 1 && choice <= state.UserNumbers.Count)
+                    {
+                        state.SelectedNumber = state.UserNumbers[choice - 1];
+                        state.AwaitingNumberChoice = false;
+
+                        await message.Channel.SendMessageAsync("Please enter the recipient's phone number:");
+                        state.AwaitingRecipientPhoneNumber = true;
+                    }
+                    else
+                    {
+                        await message.Channel.SendMessageAsync("Invalid choice. Please enter a valid number corresponding to the phone numbers listed.");
+                    }
+                }
+                else if (state.AwaitingRecipientPhoneNumber)
+                {
+                    state.RecipientPhoneNumber = message.Content;
+                    state.AwaitingRecipientPhoneNumber = false;
+                    await message.Channel.SendMessageAsync("Please enter the message content:");
+                    state.AwaitingMessageContent = true;
+                }
+                else if (state.AwaitingMessageContent)
+                {
+                    state.MessageContent = message.Content;
+                    state.AwaitingMessageContent = false;
+                    await message.Channel.SendMessageAsync("Please enter the number of times to send the message:");
+                    state.AwaitingCount = true;
+                }
+                else if (state.AwaitingCount)
+                {
+                    if (int.TryParse(message.Content, out int count) && count > 0)
+                    {
+                        state.Count = count;
+                        state.AwaitingCount = false;
+                        await SendSms(state, userId);
+                    }
+                    else
+                    {
+                        await message.Channel.SendMessageAsync("Invalid count. Please enter a valid number.");
+                    }
+                }
+            }
+        }
+
+        private async Task SendSms(SmsInteractionState state, ulong userId)
+        {
+            var user = _discordClient.GetUser(userId);
+            if (user == null)
+            {
+                Console.WriteLine("User not found.");
+                return;
+            }
+
+            try
+            {
+                int sentCount = 0;
+                for (int i = 0; i < state.Count; i++)
+                {
+                    var sendResult = await _smsHandler.SendSMSMMSAsync(state.SelectedNumber, state.RecipientPhoneNumber, state.MessageContent);
+                    if (sendResult != null)
+                    {
+                        sentCount++;
+                        // Delay every 2 messages to comply with the rate limit
+                        if (sentCount % 2 == 0 && sentCount < state.Count)
+                        {
+                            await Task.Delay(2000); // Wait for 2 seconds
+                        }
+                    }
+                    else
+                    {
+                        // Handle the case where sending an individual message fails
+                        Console.WriteLine($"Failed to send message {i + 1}");
+                    }
+                }
+
+                await user.SendMessageAsync($"SMS sent successfully to {state.RecipientPhoneNumber} {state.Count} times.");
+            }
+            catch (Exception ex)
+            {
+                await user.SendMessageAsync($"Failed to send SMS: {ex.Message}");
+            }
+
+            // Clear the state after sending the SMS
+            _interactionStates.Remove(userId);
+        }
+
+        private async Task PromptForSmsDetails(ISocketMessageChannel channel, ulong userId, string selectedNumber)
+        {
+            await channel.SendMessageAsync($"You have selected the number: {selectedNumber}. Please enter the recipient's phone number:");
+
+            // Update the interaction state to await the recipient's phone number and count
+            _interactionStates[userId].AwaitingRecipientPhoneNumber = true;
+            // Reset or initialize other necessary fields in SmsInteractionState as needed
+        }
+
+        private string ExtractPhoneNumberFromReply(SocketMessage message)
+        {
+            if (message.Content.StartsWith("From: "))
+            {
+                var parts = message.Content.Split('\n');
+                foreach (var part in parts)
+                {
+                    if (part.StartsWith("From: "))
+                    {
+                        var phoneNumber = part.Substring("From: ".Length).Trim();
+                        return phoneNumber.Length == 10 ? "1" + phoneNumber : phoneNumber;
+                    }
+                }
+            }
+            return string.Empty;
+        }
+
+        public async Task SendMessageAsync(string message, string toPhoneNumber)
+        {
+            if (!_connected) await WaitForConnectionAsync();
+
+            var guild = _discordClient.GetGuild(_guildId);
+            var channel = guild?.GetTextChannel(_channelId);
+
+            if (channel != null && _phoneNumberToUserId.TryGetValue(toPhoneNumber, out var userId))
+            {
+                var userMention = $"<@{userId}>"; // Mention format
+                var embed = new EmbedBuilder()
+                    .WithDescription(message)
+                    .WithColor(Color.Blue)
+                    .WithCurrentTimestamp()
+                    .Build();
+
+                await channel.SendMessageAsync(userMention, embed: embed);
+            }
+        }
+
+        private async Task WaitForConnectionAsync()
+        {
+            while (!_connected)
+            {
+                await Task.Delay(1000);
+            }
+        }
+    }
+}
