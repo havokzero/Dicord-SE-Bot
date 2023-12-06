@@ -210,15 +210,6 @@ namespace Dboy
             }
         }
 
-
-
-        /*  private string FindPhoneNumberByUserId(ulong userId) //this is handled in the DiscordHandler.cs
-          {
-              // Implement the logic to find the phone number by user ID like this //string senderPhoneNumber = _discordHandler.FindPhoneNumberByUserId(command.User.Id);
-              // This can be similar to what you have in your DiscordHandler class
-          }*/
-
-
         private async Task ProcessSmsSpamCommandAsync(SocketSlashCommand command, string phoneNumber, string message, int count)
         {
             try
