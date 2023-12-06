@@ -1,11 +1,11 @@
-Good SuperSms.cs no errors 
-
 using Discord;
 using Discord.WebSocket;
 using Newtonsoft.Json;
 using Smguy;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System;
+using System.Threading;
 
 namespace Dboy
 {
@@ -36,11 +36,14 @@ namespace Dboy
             _discordHandler = discordHandler; // Assign it here
             _userChoices = new Dictionary<ulong, (string, int?, string)>();
             _discordClient.MessageReceived += OnMessageReceived;
+            _discordClient = discordClient;
+            _smsHandler = smsHandler;
 
 
-            // Subscribe to necessary events
+            // Subscribe to necessary events           
             _discordClient.SlashCommandExecuted += OnSlashCommandExecutedAsync;
             //_discordClient.ComponentInteractionCreated += OnComponentInteractionAsync;
+            RegisterSlashCommands();
 
 
         }
@@ -82,6 +85,7 @@ namespace Dboy
 
         private async Task OnSlashCommandExecutedAsync(SocketSlashCommand command)
         {
+            //RegisterSlashCommands();
             Console.WriteLine($"Command Received: {command.Data.Name}");
             try
             {
@@ -155,6 +159,7 @@ namespace Dboy
 
         private async Task ProcessSmsCommandAsync(SocketSlashCommand command, string phoneNumber, string message)
         {
+            
             try
             {
                 await command.DeferAsync(); // Acknowledge the command immediately
@@ -178,6 +183,7 @@ namespace Dboy
                 }
 
                 var response = await _smsHandler.SendSMSMMSAsync(senderPhoneNumber, phoneNumber, message);
+                //Thread.Sleep(5000);
                 if (response != null)
                 {
                     var embed = new EmbedBuilder()
@@ -186,8 +192,10 @@ namespace Dboy
                         .WithColor(Color.Green)
                         .WithCurrentTimestamp()
                         .Build();
+                    //Thread.Sleep(5000);
 
                     await command.FollowupAsync(embed: embed);
+                    await Task.Delay(2500);
                 }
                 else
                 {
@@ -196,9 +204,13 @@ namespace Dboy
             }
             catch (Exception ex)
             {
+                Console.WriteLine(ex.Message);
                 await command.FollowupAsync($"Failed to send SMS: {ex.Message}");
+
             }
         }
+
+
 
         /*  private string FindPhoneNumberByUserId(ulong userId) //this is handled in the DiscordHandler.cs
           {
@@ -486,8 +498,8 @@ namespace Dboy
             // Reset or initialize other necessary fields in SmsInteractionState as needed
 
 
-              
-    }
+
+        }
 
     }
 }
