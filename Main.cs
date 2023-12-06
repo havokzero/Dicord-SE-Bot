@@ -11,19 +11,20 @@ namespace Mainboi
 {
     class Program
     {
-        private static SemaphoreSlim semaphore = new SemaphoreSlim(1, 1);
+        //private static SemaphoreSlim semaphore = new SemaphoreSlim(1, 1);
 
         private static dynamic _keys;
         private static SmsHandler _smsHandler;
         private static DiscordHandler _discordHandler;
         private static List<string> _messageHistory = new List<string>();        
+        
 
         static async Task Main(string[] args)
         {
             Console.Title = "Havok will Text you";
 
             Console.SetBufferSize(120, 1000);
-            Console.WriteLine("Let's Run this shit.!.!.");
+            Console.WriteLine("Let's Run these texts!!!");
 
             LoadKeys();
 
@@ -48,7 +49,7 @@ namespace Mainboi
             // Start the Discord bot in a separate task
             Task botTask = RunBot();
             Task pollingTask = StartPollingForMessages();
-
+            
             // Handling console input in the main thread
             while (true)
             {
@@ -162,7 +163,7 @@ namespace Mainboi
 
         private static async Task HandleSmsMmsMessages()
         {
-            await semaphore.WaitAsync();
+            //await semaphore.WaitAsync();
             try
             {
                 var messages = await _smsHandler.GetFlowrouteMessages(1); // Adjust this call as needed 1 pulls only one message
@@ -185,7 +186,7 @@ namespace Mainboi
             }
             finally
             {
-                semaphore.Release();
+               // semaphore.Release();
             }
         }
 
