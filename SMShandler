@@ -70,39 +70,7 @@ namespace Smguy
                 return new JArray();
             }
         }
-
-        /*
-         * public async Task<JArray> GetFlowrouteMessages(int limit = 50)
-        {
-            string startDate = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ssZ");
-            var url = $"https://api.flowroute.com/v2.1/messages?start_date={startDate}&limit={limit}";
-            //var url = $"https://api.flowroute.com/v2.1/messages?start_date={startDate:yyyy-MM-ddTHH:mm:ssZ}&limit={limit}&offset={_offset}";
-
-            try
-            {
-                var response = await _httpClient.GetAsync(url);
-                if (response.IsSuccessStatusCode)
-                {
-                    var responseContent = await response.Content.ReadAsStringAsync();
-                    var responseObject = JObject.Parse(responseContent);
-                    var messages = responseObject["data"]?.ToObject<JArray>() ?? new JArray();
-                    return messages;
-                }
-                else
-                {
-                    Console.WriteLine($"Error retrieving messages from Flowroute: {response.StatusCode}");
-                    return new JArray();
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error retrieving messages from Flowroute: {ex.Message}");
-                return new JArray();
-            }
-        } 
-        */
-
-
+                       
         public bool IsMessageDisplayed(string messageId)
         {
             return _displayedMessageIds.Contains(messageId);
@@ -151,19 +119,32 @@ namespace Smguy
             return timestamp;
         }
 
+        private SemaphoreSlim _rateLimitSemaphore = new SemaphoreSlim(5, 5); // Limit to 5 messages per second
+
         public async Task<string> SendSMSMMSAsync(string fromDid, string toPhoneNumber, string messageContent)
         {
-            Console.WriteLine("Sending SMS/MMS...");
-            Console.WriteLine($"From: {fromDid}, To: {toPhoneNumber}, Message: {messageContent}");
-
-            var smsMessage = new
+            try
             {
-                from = fromDid,
-                to = toPhoneNumber,
-                body = messageContent
-            };
+                Console.WriteLine("Sending SMS/MMS...");
+                Console.WriteLine($"From: {fromDid}, To: {toPhoneNumber}, Message: {messageContent}");
 
-            return await SendSMSViaFlowroute(smsMessage);
+                // Acquire a semaphore slot for rate limiting
+                await _rateLimitSemaphore.WaitAsync();
+
+                var smsMessage = new
+                {
+                    from = fromDid,
+                    to = toPhoneNumber,
+                    body = messageContent
+                };
+
+                return await SendSMSViaFlowroute(smsMessage);
+            }
+            finally
+            {
+                // Release the semaphore slot after sending the message
+                _rateLimitSemaphore.Release();
+            }
         }
 
         private async Task<string> SendSMSViaFlowroute(object smsMessage)
