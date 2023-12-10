@@ -6,6 +6,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Dboy; 
 using Smguy;
+using System.Diagnostics;
 
 namespace Mainboi
 {
@@ -79,9 +80,10 @@ namespace Mainboi
 
         static async Task HandleConsoleInput()
         {
-            Console.WriteLine("\nChoose a number!:");
+            Console.WriteLine("\nChoose an Option!:");
             Console.WriteLine("1: Send a Message");
-            Console.WriteLine("2: Exit Like a Bitch");
+            Console.WriteLine("2: Search Usernames");
+            Console.WriteLine("3: Exit");
             Console.Write("Enter option: ");
             var option = Console.ReadLine();
 
@@ -91,6 +93,12 @@ namespace Mainboi
                     await SendSMSMMS();
                     break;
                 case "2":
+                    Console.Write("Enter username(s) to search (separate multiple usernames with a space): ");
+                    string input = Console.ReadLine();
+                    Cherlock cherlock = new Cherlock(); // Create a Cherlock instance
+                    await cherlock.SearchForUsernames(input); // Search for the usernames
+                    break;
+                case "3":
                     Environment.Exit(0);
                     break;
                 default:
@@ -125,10 +133,48 @@ namespace Mainboi
             Console.Write("Enter message: ");
             var message = Console.ReadLine();
 
+            Console.Write("Enter the number of messages to send: ");
+            int messageCount = Convert.ToInt32(Console.ReadLine());
+
+            Console.Write("Enter the time delay between each message (in milliseconds): ");
+            int delayMilliseconds = Convert.ToInt32(Console.ReadLine());
+
+            int messagesSent = 0;
+            int rateLimit = 5; // Number of messages allowed per second
+            TimeSpan rateLimitInterval = TimeSpan.FromSeconds(1);
+
             try
             {
-                await _smsHandler.SendSMSMMSAsync(fromNumber, phoneNumber, message);
-                Console.WriteLine("SMS/MMS sent successfully.");
+                var stopwatch = new Stopwatch();
+                stopwatch.Start();
+
+                for (int i = 0; i < messageCount; i++)
+                {
+                    if (messagesSent >= rateLimit)
+                    {
+                        var elapsed = stopwatch.Elapsed;
+                        if (elapsed < rateLimitInterval)
+                        {
+                            var sleepTime = rateLimitInterval - elapsed;
+                            Console.WriteLine($"Rate limit reached. Waiting for {sleepTime.TotalMilliseconds} ms...");
+                            await Task.Delay(sleepTime);
+                        }
+
+                        messagesSent = 0;
+                        stopwatch.Restart();
+                    }
+
+                    await _smsHandler.SendSMSMMSAsync(fromNumber, phoneNumber, message);
+                    Console.WriteLine($"Message {i + 1}/{messageCount} sent successfully.");
+
+                    // Add the specified delay between each message
+                    if (i < messageCount - 1)
+                    {
+                        await Task.Delay(delayMilliseconds);
+                    }
+
+                    messagesSent++;
+                }
             }
             catch (Exception ex)
             {
@@ -171,7 +217,7 @@ namespace Mainboi
                 foreach (var message in messages)
                 {
                     var messageId = message["id"]?.ToString();
-                    if (!_smsHandler.IsMessageDisplayed(messageId))
+                    if (!_smsHandler.IsMessageDisplayed(messageId: messageId))
                     {
                         Console.WriteLine($"Processing new message: {messageId}");
 
