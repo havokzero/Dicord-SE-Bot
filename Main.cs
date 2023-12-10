@@ -17,9 +17,8 @@ namespace Mainboi
         private static dynamic _keys;
         private static SmsHandler _smsHandler;
         private static DiscordHandler _discordHandler;
-        private static List<string> _messageHistory = new List<string>();        
+        private static List<string> _messageHistory = new List<string>();
         
-
         static async Task Main(string[] args)
         {
             Console.Title = "Havok will Text you";
@@ -36,6 +35,7 @@ namespace Mainboi
                 _keys.flowroute.accessKey.ToString(),
                 _keys.flowroute.secretKey.ToString(),
                 _keys.flowroute.mmsMediaUrl.ToString());
+            
 
             // Reading the allowedUsers data from keys.json
             var allowedUsers = ((JObject)_keys.allowedUsers).ToObject<Dictionary<string, List<string>>>();
@@ -46,6 +46,7 @@ namespace Mainboi
                 channelId,
                 ((JObject)_keys.discord.phoneNumberToUserId).ToObject<Dictionary<string, ulong>>(),
                 _smsHandler, allowedUsers); // Passing allowedUsers to the constructor
+                // = new SuperSmsHandler(_discordHandler.DiscordClient, _smsHandler, phoneNumberToUserId, allowedUsers, guildId, _discordHandler);
 
             // Start the Discord bot in a separate task
             Task botTask = RunBot();
