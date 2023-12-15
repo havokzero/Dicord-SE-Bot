@@ -4,7 +4,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using Dboy; 
+using Dboy;
 using Smguy;
 using System.Diagnostics;
 
@@ -18,12 +18,17 @@ namespace Mainboi
         private static SmsHandler _smsHandler;
         private static DiscordHandler _discordHandler;
         private static List<string> _messageHistory = new List<string>();
-        
+        private static Dboy.PKeys keys;
+
         static async Task Main(string[] args)
         {
             Console.Title = "Havok will Text you";
 
-            Console.SetBufferSize(120, 1000);
+            // Ensure buffer width is at least as wide as the console window
+            int bufferWidth = Math.Max(Console.WindowWidth, 120);
+            int bufferHeight = Math.Min(1000, short.MaxValue - 1); // Ensure buffer height is within valid bounds
+
+            Console.SetBufferSize(bufferWidth, bufferHeight);
             Console.WriteLine("Let's Run these texts!!!");
 
             LoadKeys();
@@ -35,23 +40,23 @@ namespace Mainboi
                 _keys.flowroute.accessKey.ToString(),
                 _keys.flowroute.secretKey.ToString(),
                 _keys.flowroute.mmsMediaUrl.ToString());
-            
 
-            // Reading the allowedUsers data from keys.json
-            var allowedUsers = ((JObject)_keys.allowedUsers).ToObject<Dictionary<string, List<string>>>();
+            var allowedUsers = _keys.allowedUsers; // Use allowedUsers directly from _keys
+            var phoneNumberToUserId = _keys.discord.phoneNumberToUserId; // Use phoneNumberToUserId directly from _keys
 
             _discordHandler = new DiscordHandler(
                 _keys.discord.token.ToString(),
                 guildId,
                 channelId,
-                ((JObject)_keys.discord.phoneNumberToUserId).ToObject<Dictionary<string, ulong>>(),
-                _smsHandler, allowedUsers); // Passing allowedUsers to the constructor
-                // = new SuperSmsHandler(_discordHandler.DiscordClient, _smsHandler, phoneNumberToUserId, allowedUsers, guildId, _discordHandler);
+                phoneNumberToUserId, // Pass the variable directly
+                _smsHandler,
+                allowedUsers,
+                _keys);
 
             // Start the Discord bot in a separate task
             Task botTask = RunBot();
             Task pollingTask = StartPollingForMessages();
-            
+
             // Handling console input in the main thread
             while (true)
             {
@@ -96,7 +101,7 @@ namespace Mainboi
                 case "2":
                     Console.Write("Enter username(s) to search (separate multiple usernames with a space): ");
                     string input = Console.ReadLine();
-                    Cherlock cherlock = new Cherlock(); // Create a Cherlock instance
+                    Cherlock cherlock = new Cherlock(_keys ); // Create a Cherlock instance
                     await cherlock.SearchForUsernames(input); // Search for the usernames
                     break;
                 case "3":
@@ -188,7 +193,7 @@ namespace Mainboi
             try
             {
                 string keysJson = File.ReadAllText("keys.json");
-                _keys = JsonConvert.DeserializeObject<dynamic>(keysJson);
+                _keys = JsonConvert.DeserializeObject<Dboy.PKeys>(keysJson);
 
                 if (_keys == null)
                 {
@@ -233,7 +238,7 @@ namespace Mainboi
             }
             finally
             {
-               // semaphore.Release();
+                // semaphore.Release();
             }
         }
 
