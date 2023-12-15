@@ -1,11 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Net.Http;
+using Newtonsoft.Json.Linq;
 using System.Net.Http.Headers;
 using System.Text;
-using System.Threading.Tasks;
-using Discord;
-using Newtonsoft.Json.Linq;
 
 namespace Smguy
 {
@@ -16,7 +11,7 @@ namespace Smguy
         private readonly string _mmsMediaUrl;
         private static readonly HttpClient _httpClient = new HttpClient();
         private readonly HashSet<string> _displayedMessageIds = new HashSet<string>();
-       // private object _offset;
+        // private object _offset;
         private DateTime _lastMessageTimestamp = DateTime.MinValue;
 
         public SmsHandler(string accessKey, string secretKey, string mmsMediaUrl)
@@ -70,7 +65,7 @@ namespace Smguy
                 return new JArray();
             }
         }
-                       
+
         public bool IsMessageDisplayed(string messageId)
         {
             return _displayedMessageIds.Contains(messageId);
