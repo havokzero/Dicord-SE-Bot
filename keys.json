@@ -3,6 +3,7 @@
     "token": "Bot_Token",
     "guildId": "00000000000000000000",
     "channelId": "00000000000000000000",
+    "searchResultsChannelId": "1234567891234567893216",
     "phoneNumberToUserId": {
       "16665554422": 00000000000000000000,
       "12223334567": 00000000000000000000,
@@ -14,8 +15,7 @@
       "626439878745522177": "Username",
       "124610643247497216": "Username",
       "128035676431187968": "Username"
-    },
-    "webhookUrl": "https://discord.com/api/webhooks/00000000000000000000/00000000000000000000"
+    },    
   },
   "flowroute": {
     "secretKey": "secret_key",
