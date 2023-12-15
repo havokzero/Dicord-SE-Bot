@@ -19,19 +19,21 @@ namespace Dboy
         private bool _connected = false;
         private readonly Dictionary<string, List<string>> _allowedUsers;
         private readonly Dictionary<ulong, SmsInteractionState> _interactionStates;
-        //public string FindPhoneNumberByUserId(ulong userId);
         private static SuperSmsHandler _superSmsHandler;
 
         public DiscordHandler(string token, ulong guildId, ulong channelId,
                       Dictionary<string, ulong> phoneNumberToUserId,
                       SmsHandler smsHandler,
-                      Dictionary<string, List<string>> allowedUsers)
+                      Dictionary<string, List<string>> allowedUsers,
+                      Dboy.PKeys keys)
+
         {
             _token = token;
             _guildId = guildId;
             _channelId = channelId;
             _phoneNumberToUserId = phoneNumberToUserId;
             _smsHandler = smsHandler;
+            
 
             _discordClient = new DiscordSocketClient(new DiscordSocketConfig
             {
@@ -40,12 +42,13 @@ namespace Dboy
 
             _discordClient.Log += LogAsync;
             _discordClient.Ready += OnClientReady;
-          //  _discordClient.SlashCommandExecuted += OnSlashCommandExecutedAsync;
+
             _allowedUsers = allowedUsers;
             _interactionStates = new Dictionary<ulong, SmsInteractionState>();
-            _superSmsHandler = new SuperSmsHandler(_discordClient, _smsHandler, phoneNumberToUserId, allowedUsers, guildId, this);
-
+            _superSmsHandler = new SuperSmsHandler(
+                _discordClient, _smsHandler, phoneNumberToUserId, allowedUsers, guildId, this, keys); // Pass the 'keys' parameter here
         }
+    
 
         public string? FindPhoneNumberByUserId(ulong userId)
         {
@@ -77,7 +80,7 @@ namespace Dboy
             //RegisterSlashCommands();
             return Task.CompletedTask;
         }
-      
+
         private string ExtractPhoneNumberFromReply(SocketMessage message)
         {
             if (message.Content.StartsWith("From: "))
