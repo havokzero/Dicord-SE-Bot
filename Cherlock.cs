@@ -1,26 +1,25 @@
-using System;
-using System.Collections.Generic;
-using System.Net.Http;
-using System.Threading.Tasks;
+using Dboy;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using Dboy;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Mainboi
 {
     public class Cherlock
     {
-        private HttpClient _httpClient;
+        private readonly HttpClient _httpClient;
         private List<SiteInfo> sites;
-        private SemaphoreSlim _semaphore;
+        private readonly SemaphoreSlim _semaphore;
         private int resultCount; // Class-level field for counting results
+        private PKeys _keys;
 
-        public Cherlock()//(int maxConcurrentRequests = 10) // Default to 10 concurrent requests
+        public Cherlock(PKeys keys) // Pass the _keys configuration object as a parameter
         {
+            _keys = keys; // Store the configuration object
             _httpClient = new HttpClient();
             sites = new List<SiteInfo>();
-            _semaphore = new SemaphoreSlim(20, 20); // Initialize the semaphore, 25 concurrent tasks
+            _semaphore = new SemaphoreSlim(20, 20); // Initialize the semaphore, 20 concurrent tasks
         }
 
         private string ConvertToString(dynamic value)
@@ -100,7 +99,7 @@ namespace Mainboi
                 if (await CheckUsernameAsync(site, username))
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.Write("[+] ");                    
+                    Console.Write("[+] ");
                     Console.Write($"{site.Name}: ");
                     Console.ResetColor();
                     Console.WriteLine(site.FormattedUrl);
@@ -118,12 +117,13 @@ namespace Mainboi
         {
             if (site == null || string.IsNullOrEmpty(site.Url) || !site.Url.Contains("{0}"))
             {
+                // Uncomment for debugging
                 // Console.WriteLine($"Skipping site {site?.Name} due to missing or invalid URL format.");
                 return false;
             }
 
             string formattedUrl = string.Format(site.Url, username);
-            site.FormattedUrl = formattedUrl; // Store the formatted URL
+            site.FormattedUrl = formattedUrl; // Store the formatted URL for potential use
 
             try
             {
@@ -131,30 +131,46 @@ namespace Mainboi
                 var finalUrl = response.RequestMessage.RequestUri.ToString();
                 var content = await response.Content.ReadAsStringAsync();
 
-                // Check if the response indicates the username does not exist
-                if (!response.IsSuccessStatusCode)
+                // Check if the final URL does not contain the username
+                if (!finalUrl.Contains(username))
                 {
-                    if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                    {
-                        return false;
-                    }
-                    // Uncomment for specific status code debugging
-                    // Console.WriteLine($"Unhandled status code {response.StatusCode} for {formattedUrl}.");
                     return false;
-                }                
-                // Additional checks based on site.ErrorType and site.ErrorMsg
-                if (site.ErrorType == "message" && !string.IsNullOrEmpty(site.ErrorMsg))
-                {
-                    return !content.Contains(site.ErrorMsg);
                 }
 
-                return true; // Username exists and passes all checks
+                switch (response.StatusCode)
+                {
+                    case System.Net.HttpStatusCode.OK:
+                        if (site.ErrorType == "message" && !string.IsNullOrEmpty(site.ErrorMsg))
+                        {
+                            return !Regex.IsMatch(content, site.ErrorMsg);
+                        }
+                        return true;
+
+                    case System.Net.HttpStatusCode.NotFound:
+                    case System.Net.HttpStatusCode.Unauthorized:
+                    case System.Net.HttpStatusCode.InternalServerError: // Silently ignore internal server errors
+                    case System.Net.HttpStatusCode.BadRequest:
+                    case System.Net.HttpStatusCode.Forbidden:
+                    case System.Net.HttpStatusCode.NotAcceptable:
+                    case System.Net.HttpStatusCode.Gone:
+                    case System.Net.HttpStatusCode.Redirect:
+                        return false;
+
+                        // Uncomment for specific status code debugging
+                        // default:
+                        //     Console.WriteLine($"Unhandled status code {response.StatusCode} for {formattedUrl}.");
+                        //     break;
+                }
             }
             catch (Exception ex)
             {
+                // Uncomment for debugging
                 // Console.WriteLine($"Error checking {formattedUrl}: {ex.Message}");
                 return false;
             }
+
+            // Default return for unhandled cases
+            return false;
         }
 
         private bool IsExpectedUrlFormat(string url, string username)
@@ -186,6 +202,8 @@ namespace Mainboi
             return results.ToString();
         }
 
+        public int UsernameCount { get; private set; } = 0;
+
         private async Task ProcessSiteAsyncForDiscord(SiteInfo site, string username, StringBuilder results)
         {
             await _semaphore.WaitAsync();
@@ -195,7 +213,8 @@ namespace Mainboi
                 {
                     lock (results)
                     {
-                        results.AppendLine($"[+] {site.Name}: {site.FormattedUrl}");
+                        results.AppendLine($"[+] {site.Name}: <{site.FormattedUrl}>");
+                        UsernameCount++; // Increment the counter
                     }
                 }
             }
@@ -203,17 +222,6 @@ namespace Mainboi
             {
                 _semaphore.Release();
             }
-        }
-
-        public class SiteInfo
-        {
-            public string? Name { get; set; }
-            public string? Url { get; set; }
-            public string? ErrorType { get; set; }
-            public string? ErrorMsg { get; set; }
-            public string? UrlMain { get; set; }
-            public string? UsernameClaimed { get; set; }
-            public string? FormattedUrl { get; set; } // Add this property
         }
     }
 }
