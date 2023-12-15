@@ -1,6 +1,6 @@
 namespace Dboy
 {
-    public class Keys
+    public class PKeys
     {
         public DiscordKeys? discord { get; set; }
         public FlowrouteKeys? flowroute { get; set; }
@@ -14,6 +14,7 @@ namespace Dboy
         public string? channelId { get; set; }
         public Dictionary<string, ulong>? phoneNumberToUserId { get; set; }
         public string? webhookUrl { get; set; }
+        public string? searchResultsChannelId { get; set; }
     }
 
     public class FlowrouteKeys
@@ -37,45 +38,18 @@ namespace Dboy
         public bool AwaitingRecipientPhoneNumber { get; set; }
         public bool AwaitingMessageContent { get; set; } // Add this
         public bool AwaitingCount { get; set; } // Add this
-
-        // Constructor
-        public SmsInteractionState()
-        {
-            AwaitingNumberChoice = false;
-            AwaitingRecipientPhoneNumber = false;
-            AwaitingMessageContent = false; // Initialize this
-            AwaitingCount = false; // Initialize this
-                                   // Initialize other properties as needed
-        }
-    }
-}
-   
-    public class SmsInteractionState
-    {
-        public string SelectedNumber { get; set; }
-        public string RecipientPhoneNumber { get; set; }
-        public string MessageContent { get; set; }
-        public int Count { get; set; }
-        public List<string> UserNumbers { get; set; }
-        public bool AwaitingNumberChoice { get; set; }
-        public bool AwaitingRecipientPhoneNumber { get; set; }
-        public bool AwaitingMessageContent { get; set; } 
-        public bool AwaitingCount { get; set; } 
         
-       public class SuperSmsInteractionState
-    {
-        public string SelectedNumber { get; set; }
-        public string RecipientPhoneNumber { get; set; }
-        public string MessageContent { get; set; }
-        public int Count { get; set; }
-    
     }
 
     public class SiteInfo
     {
-        public string Name { get; set; }
-        public string Url { get; set; }
-        public string ErrorType { get; set; }
-        public string ErrorMsg { get; set; }        
+        public string? searchResultsChannelId { get; set; }
+        public string? Name { get; set; }
+        public string? Url { get; set; }
+        public string? ErrorType { get; set; }
+        public string? ErrorMsg { get; set; }
+        public string? UrlMain { get; set; }
+        public string? UsernameClaimed { get; set; }
+        public string? FormattedUrl { get; set; }
     }
 }
